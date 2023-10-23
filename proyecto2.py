@@ -1,391 +1,531 @@
-# Import necessary libraries
 import re
-import itertools
-from pprint import pprint
-import copy
-import networkx as nx
-import matplotlib.pyplot as plt
-from networkx.drawing.nx_pydot import graphviz_layout
+import itertools as it
+from graphviz import Digraph
+import time
 
-# AUXILIARY FUNCTIONS SECTION
-
-# Function to read a grammar file
-def read_file(file_name: str) -> (list[str] | None):
-    # Try to open and read the file
-    try:
-        file = open(file_name, 'r', encoding='utf-8')
-        data = file.read()
-        file.close()
-        return data.split('\n')
-    except:
-        print("Error reading the file")
-        return None
-
-# Function to evaluate a regular expression in a string
-def evaluate_expression(regex: str, expression: str) -> bool:
-    if re.match(regex, expression):
-        return True
-    else:
-        return False
-
-# Function to identify terminal and non-terminal symbols in the grammar
-def identify_terms(grammar: dict) -> (set, set):
-    non_terminals: set = set(grammar.keys())
-    terminals: set = set()
-
-    for productions in grammar.values():
-        for production in productions:
-            for term in production.split(" "):
-                if term not in non_terminals:
-                    terminals.add(term)
-
-    return non_terminals, terminals
-
-# Function to build the power set of a set
-def build_power_set(s: set) -> list[str]:
-    power_set = []
-    for i in range(len(s) + 1):
-        power_set.extend(itertools.combinations(s, i))
-    return power_set
-
-# Function to check if a symbol is terminal
-def is_terminal(term: str) -> bool:
-    if re.fullmatch("([a-z]|[0-9]|\s)*", term):
-        return True
-    else:
-        return False 
-
-# SIMPLIFICATION SECTION OF GRAMMARS FOR CHOMSKY NORMAL FORM
-
-# Function to remove epsilon productions
-def remove_epsilon_productions(grammar: dict) -> dict:
+# CNF
+def nullableSymble(gram_argument):
     nullable = set()
+    change = True
 
-    for i in grammar:
-        if 'ε' in grammar[i]:
-            nullable.add(i)
-
-    changed = True
-    while changed:
-        changed = False
-        temp_set = set()
-        for i in grammar:
-            for j in nullable:
-                if (j in grammar[i]) and (i not in nullable):
-                    temp_set.add(i)
-                    changed = True
+    while change:
+        change = False
+        for production in gram_argument:
+            head, body = production.split(' → ')
+            bodys = body.split(' | ')
+            for body in bodys:
+                body = body.split(' ')
+                if 'ε' in body or all(simbolo in nullable for simbolo in body):
+                    if head not in nullable:
+                        nullable.add(head)
+                        change = True
         
-        nullable = nullable.union(temp_set)
+    return nullable
+
+# This function eliminates epsilon productions from the grammar.
+def eliminate_prod_epsilon(gram_argument):
+    nullable = nullableSymble(gram_argument)
+        
+    nuevaGram = []
+
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+
+        new_bodies = set(bodys)
+        
+        for body in bodys:
+            body = body.split(' ')
+            
+            nullable_body = []
+            for i in range(len(body)):
+                if body[i] in nullable:
+                    nullable_body.append({"simbolo":body[i],"position":i})
+                     
+            for i in range(1,len(nullable_body)+1):
+                combinations = it.combinations(nullable_body, r=i)
+
+                for combination in combinations:
+                    nuevobody = body.copy()
+                    for item in combination:
+                        i = item["position"]
+                        nuevobody[i]=" "
+                    
+                    while " " in nuevobody:
+                        nuevobody.remove(" ")
+                        
+                    if len(nuevobody)>0:
+                        new_bodies.add(' '.join(nuevobody))
+                    
+                        
+                    
+        if 'ε' in new_bodies:
+            new_bodies.remove('ε')
+        
+        if len(new_bodies)>0:
+            nuevaGram.append(head + ' → ' + ' | '.join(new_bodies))
+        
+    return nuevaGram
+
+# Checks if a production is valid based on a given pattern.
+def prod_valid(pattern, production):
+    return bool(re.match(pattern, production))
+
+# Extracts non-terminals from the grammar.
+def non_terminal_symbol(gram_argument):
+    non_terminal = set()
+
+    for production in gram_argument:
+        non_terminal.add(production.split(' → ')[0])
     
-    # Remove epsilon production
-    for i in grammar:
-        if 'ε' in grammar[i]:
-            grammar[i].remove('ε')
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        for body in bodys:
+            body = body.split(' ')
+            for simbolo in body:
+                if simbolo.isupper():
+                    non_terminal.add(simbolo)
+        
+    return non_terminal
 
-    power_set = build_power_set(nullable)
+# Extracts terminals from the grammar.
+def terminal_symbol(gram_argument):
+    non_terminal = non_terminal_symbol(gram_argument)
+    terminales = set()
 
-    new_grammar = {}
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        for body in bodys:
+            body = body.split(' ')
+            for simbolo in body:
+                if simbolo not in non_terminal:
+                    terminales.add(simbolo)
+        
+    return terminales
 
-    for i in grammar:
-        new_grammar[i] = []
-        for j in grammar[i]:
-            new_grammar[i].append(j)
-
-        for j in grammar[i]:
-            for k in power_set:
-                new_production = j
-                for l in k:
-                    new_production = new_production.replace(l, '')
-                if new_production != '' and (new_production not in new_grammar[i]):
-                    new_grammar[i].append(new_production)
-
+# Finds unary productions in the grammar.
+def Unary_operator(gram_argument, non_terminal):
+    prods_unarias = set()
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        for body in bodys:
+            if body in non_terminal:
+                prods_unarias.add((head, body))
     
-    grammar = new_grammar
-    new_grammar = copy.deepcopy(grammar)
+    return prods_unarias
 
-    for i in grammar:
-        for j in grammar[i]:
-            if j == ' ':
-                new_grammar[i].remove(j)
-            elif is_terminal(j):
-                temp = j
-                temp = temp.replace(' ', '')
-                new_grammar[i].append(temp)
-                new_grammar[i].remove(j)
-
-    return new_grammar
-
-# Function to remove unit productions
-def remove_unit_productions(grammar: dict) -> dict: 
-    new_grammar = {}
-    for i in grammar:
-        new_grammar[i] = []
-        for j in grammar[i]:
-            new_grammar[i].append(j)
-
-    changed = True
-    while changed:
-        changed = False
-        for i in new_grammar:
-            for j in new_grammar[i]:
-                if len(j) == 1 and j.isupper():
-                    for k in new_grammar[j]:
-                        if k not in new_grammar[i]:
-                            new_grammar[i].append(k)
-                    new_grammar[i].remove(j)
-                    changed = True
-
-    return new_grammar 
-
-# Function to remove non-derivable symbols
-def remove_non_derivable_symbols(grammar: dict) -> dict:
-    non_terminals, terminals = identify_terms(grammar)
-    derivable = set()
-
-    for i in grammar:
-        for j in grammar[i]:
-            if j in terminals:
-                derivable.add(i)
-
-    changed = True
-    while changed:
-        changed = False
-        for i in grammar:
-            for j in grammar[i]:
-                for k in j.split(" "):
-                    if k in derivable and i not in derivable:
-                        derivable.add(i)
-                        changed = True
-
-    new_grammar = {}
-
-    for i in derivable:
-        new_grammar[i] = []
-        for j in grammar[i]:
-            new_grammar[i].append(j)
+# Finds non-unary productions in the grammar.
+def non_unary_operator(gram_argument, non_terminal):
+    non_unary_prods = set()
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        for body in bodys:
+            if body not in non_terminal:
+                non_unary_prods.add((head, body))
     
-    return new_grammar
+    return non_unary_prods
 
-# Function to remove unreachable productions
-def remove_unreachable_productions(grammar: dict) -> dict:
-    reachable = set("S")
-    new_grammar = {}
+# Eliminates unary productions from the grammar.
+def eliminate_unary(gram_argument):
+    nuevaGram = []
+    non_terminal = non_terminal_symbol(gram_argument)
+    prods_unarias = Unary_operator(gram_argument, non_terminal)
+    non_unary_prods = non_unary_operator(gram_argument, non_terminal) 
 
-    non_terminals: set = set(grammar.keys())
-    terminals: set = set()
-
-    for productions in grammar.values():
-        for production in productions:
-            for term in production.split(" "):
-                if term not in non_terminals:
-                    terminals.add(term)
-
-    changed = True
-    while changed:
-        changed = False
-        temp_set = set()
-        for i in reachable:
-            for j in grammar[i]:
-                jsplit = j.split(" ")
-                for k in jsplit:
-                    if k in non_terminals and k not in reachable:
-                        temp_set.add(k)
-                        changed = True
-
-        reachable = reachable.union(temp_set)
+    parejas_unarias = set()
+    for simbolo in non_terminal:
+        parejas_unarias.add((simbolo, simbolo))
     
-    for i in reachable:
-        new_grammar[i] = []
-        for j in grammar[i]:
-            new_grammar[i].append(j)
-    for i in grammar:
-        for j in grammar[i]:
-            for k in j.split(" "):
-                if k not in non_terminals and k not in terminals:
-                    new_grammar[i].remove(j)
-                    break
+    change = True
+    
+    parejas_nueva_gram = set()
+    
+    while change:
+        change = False
+        for pareja in parejas_unarias.copy():
+            for prod in prods_unarias:
+                if pareja[1] == prod[0] and (pareja[0], prod[1]) not in parejas_unarias:
+                    parejas_unarias.add((pareja[0], prod[1]))
+                    change = True
+                    
+    for pareja in parejas_unarias:
+        for prod in non_unary_prods:
+            if pareja[1] == prod[0]:
+                parejas_nueva_gram.add((pareja[0], prod[1]))
+    
+    for simbolo in non_terminal:
+        new_bodies = set()
+        
+        for pareja in parejas_nueva_gram:
+            if simbolo == pareja[0]:
+                new_bodies.add(pareja[1])
+        
+        if len(new_bodies) > 0:
+            nuevaGram.append(simbolo + ' → ' + ' | '.join(new_bodies))
+            
+    return nuevaGram
 
-    return new_grammar
+# Finds symbols that can generate terminals.
+def simbolosGeneran(gram_argument):
+    simbolos_generan = terminal_symbol(gram_argument)
+    
+    change = True
 
-# Function to convert a grammar to Chomsky Normal Form
-def convert_to_chomsky(grammar: dict) -> dict:
-    # Simplify the grammar
-    grammar = remove_epsilon_productions(grammar)
-    grammar = remove_unit_productions(grammar)
-    grammar = remove_non_derivable_symbols(grammar)
-    grammar = remove_unreachable_productions(grammar)
-    # Convert to Chomsky Normal Form
-    changed = True
-    nt = 0
-    while changed:
-        changed = False
-        new_grammar = copy.deepcopy(grammar)
-        for i in grammar:
-            for j in grammar[i]:
-                jsplit = j.split(" ")
-                if len(jsplit) > 2:
-                    splitted_and_separated = jsplit[1:]
-                    joined = " ".join(splitted_and_separated)
+    while change:
+        change = False
+        for production in gram_argument:
+            head, body = production.split(' → ')
+            bodys = body.split(' | ')
+            for body in bodys:
+                body = body.split(' ')
+                if all(simbolo in simbolos_generan for simbolo in body):
+                    if head not in simbolos_generan:
+                        simbolos_generan.add(head)
+                        change = True
+                        
+    return simbolos_generan
 
-                    if [joined] in list(new_grammar.values()):
-                        for k in new_grammar:
-                            if new_grammar[k] == [joined]:
-                                new_grammar[i].append(jsplit[0] + " " + f"{k}")
-                                new_grammar[i].remove(j)
-                    else:
-                        new_grammar[f"NT{nt}"] = [joined]
-                        new_grammar[i].append(jsplit[0] + " " + f"NT{nt}")
-                        new_grammar[i].remove(j)
-                        nt += 1
-                        changed = True
-        grammar = new_grammar
+# Eliminates symbols that do not generate terminals from the grammar.
+def eliminate_non_generator(gram_argument):
+    simbolos_generan = simbolosGeneran(gram_argument)
+    nuevaGram = []
+    
+    for production in gram_argument:
+        if production.split(' → ')[0] in simbolos_generan:
+            nuevaGram.append(production)
+        
+    for production in nuevaGram.copy():
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        new_bodies = set(bodys)
+        
+        for body in bodys:
+            body = body.split(' ')
+            if any(simbolo not in simbolos_generan for simbolo in body):
+                new_bodies.remove(' '.join(body))
+        
+        nuevaGram.remove(production)
+        if len(new_bodies) > 0:
+            nuevaGram.append(head + ' → ' + ' | '.join(new_bodies))
+    
+    return nuevaGram
 
-    new_grammar = {}
-    for i in grammar:
-        new_grammar[i] = []
-        for j in grammar[i]:
-            new_grammar[i].append(j.split(" "))
+# Finds symbols that are reachable from the start symbol.
+def reachable_symbols(gram_argument, simboloInicial):
+    simbolos_alcanzables = set(simboloInicial)
+    change = True
 
-    grammar = new_grammar
+    while change:
+        change = False
+        for production in gram_argument:
+            head, body = production.split(' → ')
+            bodys = body.split(' | ')
+            
+            if head in simbolos_alcanzables:
+                for body in bodys:
+                    body = body.split(' ')
+                    for simbolo in body:
+                        if simbolo not in simbolos_alcanzables:
+                            simbolos_alcanzables.add(simbolo)
+                            change = True
+                        
+    return simbolos_alcanzables
 
+# Eliminates symbols that are not reachable from the start symbol.
+def eliminarSimbolosNoAlcanzables(gram_argument, simboloInicial):
+    simbolos_alcanzables = reachable_symbols(gram_argument, simboloInicial)
+    nuevaGram = []
+                    
+    for production in gram_argument:
+        if production.split(' → ')[0] in simbolos_alcanzables:
+            nuevaGram.append(production)
+    
+    for production in nuevaGram.copy():
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        new_bodies = set(bodys)
+        
+        for body in bodys:
+            body = body.split(' ')
+            if any(simbolo not in simbolos_alcanzables for simbolo in body):
+                new_bodies.remove(' '.join(body))
+        
+        nuevaGram.remove(production)
+        if len(new_bodies) > 0:
+            nuevaGram.append(head + ' → ' + ' | '.join(new_bodies))
+
+    return nuevaGram
+
+# Eliminates symbols that are not useful in the grammar.
+def eliminarSimbolosInutiles(gram_argument, simboloInicial):
+    nuevaGram = eliminate_non_generator(gram_argument)
+    nuevaGram = eliminarSimbolosNoAlcanzables(nuevaGram, simboloInicial)
+    
+    return nuevaGram
+
+# Generates a new symbol based on the state.
+def generarSimbolo(state):
+    return state[0:2] + chr(ord(state[2]) + 1)
+
+# Transforms the grammar to Chomsky Normal Form (CNF) - Part A.
+def cnfA(gram_argument):
+    state_counter = 'X_0'
+    terminales = terminal_symbol(gram_argument)
+    nuevaGram = []
+    nuevasProd = set()
+    
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        for body in bodys:
+            if body not in terminales:
+                body = body.split(' ')
+                
+                for simbolo in body:
+                    if simbolo in terminales and simbolo not in [item[1] for item in nuevasProd]:
+                        state_counter = generarSimbolo(state_counter)
+                        nuevasProd.add((state_counter, simbolo))
+     
+    for item in nuevasProd:
+        nuevaGram.append(item[0] + ' → ' + item[1])
+
+    for production in gram_argument:
+        head, body = production.split(' → ')
+        bodys = body.split(' | ')
+        
+        new_bodies = set()
+        
+        for body in bodys:
+            if body not in terminales:
+                body = body.split(' ')
+                
+                for simbolo in body:
+                    for item in nuevasProd:
+                        if simbolo == item[1]:
+                            i = body.index(simbolo)
+                            body[i] = item[0]
+            
+                body = ' '.join(body)
+            
+            new_bodies.add(body)
+            
+        if len(new_bodies) > 0:
+            nuevaGram.append(head + ' → ' + ' | '.join(new_bodies))
+                   
+    return nuevaGram
+
+# Transforms the grammar to Chomsky Normal Form (CNF) - Part B.
+def cnfB(gram_argument):
+    state_counter = 'C_0'
+    terminales = terminal_symbol(gram_argument)
+    change = True
+    
+    while change:
+        nuevaGram = []
+        nuevasProd = set()
+        change = False
+        for production in gram_argument:
+            head, body = production.split(' → ')
+            bodys = body.split(' | ')
+        
+            for body in bodys:
+                if body not in terminales:
+                    body = body.split(' ')
+                    if len(body) >= 3 and (body[len(body) - 2], body[len(body) - 1]) not in [item[1] for item in nuevasProd]:
+                        state_counter = generarSimbolo(state_counter)
+                        nuevasProd.add((state_counter, (body[len(body) - 2], body[len(body) - 1])))
+                        change = True
+                        
+        for item in nuevasProd:
+            nuevaGram.append(item[0] + ' → ' + item[1][0] + ' ' + item[1][1])
+        
+        for production in gram_argument:
+            head, body = production.split(' → ')
+            bodys = body.split(' | ')
+        
+            new_bodies = set()
+        
+            for body in bodys:
+                if body not in terminales:
+                    body = body.split(' ')
+                
+                    if len(body) >= 3:
+                        for item in nuevasProd:
+                            if (body[len(body) - 2], body[len(body) - 1]) == item[1]:
+                                body[len(body) - 2] = item[0]
+                                body[len(body) - 1] = " "
+                
+                    while " " in body:
+                            body.remove(" ")
+                    body = ' '.join(body)
+            
+                new_bodies.add(body)
+            
+            if len(new_bodies) > 0:
+                nuevaGram.append(head + ' → ' + ' | '.join(new_bodies)
+    )
+    return nuevaGram
+
+# Transforms the grammar to Chomsky Normal Form (CNF).
+def cnf(gram_argument):
+    nuevaGram = cnfA(gram_argument)
+    nuevaGram = cnfB(nuevaGram)
+    
+    return nuevaGram
+
+# Node class for building parse trees.
+class Node:
+    def __init__(self, symbol, children=[]):
+        self.symbol = symbol
+        self.children = children
+
+    def __repr__(self):
+        return self.symbol
+
+# Visualizes the parse tree using Graphviz.
+def visualize_tree(node):
+    dot = Digraph(comment='Parse Tree')
+    build_graph(dot, node)
+    dot.view(filename='Parse Tree', cleanup=True)
+
+# Builds the graph with recursion.
+def build_graph(dot, node, parent_name=None):
+    name = node.symbol + str(id(node))
+    dot.node(name, node.symbol)
+    if parent_name:
+        dot.edge(parent_name, name)
+    for child in node.children:
+        build_graph(dot, child, name)
+
+# Prints the tree with recursion.
+def print_tree(node, indent=0):
+    print(' ' * indent + node.symbol)
+    for child in node.children:
+        print_tree(child, indent + 2)
+
+# Converts the grammar array to a dictionary.
+def convert_to_grammar(rules_list):
+    grammar = {}
+    for rule in rules_list:
+        left, right = rule.split("→")
+        left = left.strip()
+        productions = [prod.strip().split() for prod in right.split("|")]
+        if left not in grammar:
+            grammar[left] = []
+        grammar[left].extend(productions)
     return grammar
 
-# CYK ALGORITHM IMPLEMENTATION SECTION
+# CYK algorithm, returns the parse tree.
+def cyk(grammar, W, simboloInicial):
 
-# Function to perform CYK syntactic analysis
-def cyk_parse(grammar: dict, word: str) -> (bool,list|None):
-    n = len(word)
-    # Initialize the table
-    T = [[set([]) for j in range(n)] for i in range(n)]
- 
-    # Fill the table
-    for j in range(0, n):
-        # Iterate over the grammar rules
-        for lhs, rule in grammar.items():
-            for rhs in rule:
-                # If a terminal is found
-                if len(rhs) == 1 and rhs[0] == word[j]:
-                    T[j][j].add(lhs)
- 
-        for i in range(j, -1, -1):   
-            # Iterate over the range i to j + 1   
-            for k in range(i, j):     
-                # Iterate over the grammar rules
-                for lhs, rule in grammar.items():
-                    for rhs in rule:
-                        # If a terminal is found
-                        if (len(rhs) == 2) and (rhs[0] in T[i][k]) and (rhs[1] in T[k+1][j]):
-                            T[i][j].add(lhs)
-    if len(T[0][n-1]) != 0:
-        return True, T
-    else:
-        return False, None
-
-# PARSE TREE VISUALIZATION SECTION
-
-# Function to generate and visualize the parse tree
-def generate_and_visualize_tree(grammar: dict, table: list, sentence: list) -> None:
-    class Node:
-        def __init__(self, symbol):
-            self.symbol = symbol
-            self.children = []
-
-        def add_child(self, child):
-            self.children.append(child)
-
-        def get_children(self):
-            return self.children
-        
-    def generate_tree(table, grammar, i, j, symbol):
-        if i == j:
-            for rule, productions in grammar.items():
-                for production in productions:
-                    if len(production) == 1 and symbol in production:
-                        return Node(symbol)
-        
-        for k in range(i, j):
-            for rule, productions in grammar.items():
-                for production in productions:
-                    if symbol == rule and len(production) == 2:
-                        left, right = production
-                        if left in table[i][k] and right in table[k+1][j]:
-                            node = Node(symbol)
-                            node.add_child(generate_tree(table, grammar, i, k, left))
-                            node.add_child(generate_tree(table, grammar, k+1, j, right))
-                            return node
-
-        node = Node(symbol)
-
-        if len(node.get_children()) == 0:
-            outputs = grammar[symbol]
-            terminals = []
-
-            for term in outputs:
-                if len(term) == 1:
-                    terminals.append(term[0])
-
-            for word in sentence:
-                if word in terminals:
-                    node.add_child(Node(word))
-                    sentence.remove(word)
-                    break
-
-        return node
+    n = len(W)
+    P = {}
     
-    def visualize(tree):
-        G = nx.DiGraph()
-        labels = {}
-
-        def add_node_edges(tree, G, parent=None, counter=0):
-            node = f"{tree.symbol}{counter}"
-            G.add_node(node)
-            labels[node] = tree.symbol
-            if parent is not None:
-                G.add_edge(parent, node)
-            counter += 1
-            for child in tree.children:
-                counter = add_node_edges(child, G, node, counter)
-            return counter
-
-        add_node_edges(tree, G)
-        pos = nx.graph
-        pos = graphviz_layout(G, "dot")
-        plt.figure(figsize=(10, 6))
-        nx.draw(G, pos, labels=labels, with_labels=True, node_size=3000, node_color="skyblue", font_size=15)
-        plt.title("Parse Tree")
-        plt.show()
+    # Initialize P with non-terminals that produce terminals.
+    # Implementation of the base condition of dynamic programming.
+    # Direct derivations are identified.
+    for i in range(n):
+        P[(i, i + 1)] = []
+        for A, productions in grammar.items():
+            for prod in productions:
+                if len(prod) == 1 and prod[0] == W[i]:
+                    P[(i, i + 1)].append(Node(A, [Node(prod[0])]))
     
-    parse_tree = generate_tree(table, grammar, 0, len(table) - 1, 'S')
-    visualize(parse_tree)
+    # Dynamic programming: fill matrix P iteratively.
+    # For each substring of the word, find all possible derivations.
+    for span in range(2, n + 1):
+        for start in range(n - span + 1):
+            end = start + span
+            P[(start, end)] = []
+            # Consider all possible bipartitions of the substring.
+            for split in range(start + 1, end):
+                # Check if each production rule can be applied.
+                for A, productions in grammar.items():
+                    for prod in productions:
+                        if len(prod) == 2:
+                            B, C = prod
+                            # Check the already stored solutions for substrings [start, split] and [split, end].
+                            # If matches are found, build a derivation and add it to our P matrix.
+                            for b_node in P[(start, split)]:
+                                if b_node.symbol == B:
+                                    for c_node in P[(split, end)]:
+                                        if c_node.symbol == C:
+                                            P[(start, end)].append(Node(A, [b_node, c_node]))
+    
+    # Return the parse tree if one exists for the entire word.
+    for node in P[(0, n)]:
+        if node.symbol == simboloInicial:
+            return node
+    return None
 
-# MAIN
+# Execution
+pattern = r"([A-Z]+)\s*→\s*(\w|\s)+"
+gram_argument = []
+denegade = False
+simboloInicial = ""
 
-if __name__ == '__main__':
-    regex = "[A-z]+->(([A-Za-z0-9]|\s)*(\|)*)+|ε"
-    data = read_file(f'./1.txt')
-    for expression in data:
-        if expression != '':
-            if not evaluate_expression(regex=regex, expression=expression):
-                print(f'Production {expression} does not comply, so the grammar is not accepted')
-                exit(0)
-
-    grammar: dict = {}
-
-    for expression in data:
-        expression_split1 = expression.split('->')
-        expression_split2 = expression_split1[1].split('|')
-        if expression_split1[0] not in grammar:
-            grammar[expression_split1[0]] = expression_split2
+with open("1.txt", 'r') as f:
+    print("\n---------------------")
+    print("ORIGINAL GRAMMAR: ")
+    lineas = f.readlines()
+    for i, linea in enumerate(lineas):
+        linea = linea.strip()
+        linea = linea.replace("â†’", "→")
+        linea = linea.replace("Îµ", "ε")
+            
+        respuesta = prod_valid(pattern, linea)
+            
+        if respuesta:
+            gram_argument.append(linea)
+            if i == 0:
+                simboloInicial = linea.split(' → ')[0]
+            print(linea)
         else:
-            grammar[expression_split1[0]].extend(expression_split2)
+            print("\nERROR! Line: " + linea + " in gram_argument.txt is incorrect.")
+            denegade = True
+            break
+        
+if denegade is False:
+    nuevagram_argument = eliminate_prod_epsilon(gram_argument)
+    print("\nGRAMMAR WITHOUT ε PRODUCTIONS: ")
+    for item in nuevagram_argument:
+        print(item)
+    
+    nuevagram_argument = eliminate_unary(nuevagram_argument)
+    print("\nGRAMMAR WITHOUT UNIT PRODUCTIONS: ")
+    for item in nuevagram_argument:
+        print(item)
 
-    grammar: dict = convert_to_chomsky(grammar) 
-
-    sentence: list = input("Enter the sentence you want to verify: ").split()
-    accept, table = cyk_parse(grammar, sentence)
-
-    if accept:
-        print("The sentence IS accepted")
-        generate_and_visualize_tree(grammar, table, sentence)
+    nuevagram_argument = eliminarSimbolosInutiles(nuevagram_argument, simboloInicial)
+    print("\nGRAMMAR WITHOUT UNUSED SYMBOLS: ")
+    for item in nuevagram_argument:
+        print(item)
+    
+    nuevagram_argument = cnf(nuevagram_argument)
+    print("\nGRAMMAR IN CNF: ")
+    for item in nuevagram_argument:
+        print(item)
+        
+    grammar = convert_to_grammar(nuevagram_argument)
+    
+    # Input of the string
+    W = input("\nEnter the string 𝑤. Separate non-terminals with whitespace. Example: (id * id) + id\n")
+    start_time = time.time()
+    parse_tree = cyk(grammar, W.split(), simboloInicial)
+    if parse_tree:
+        print("\nThe expression 𝑤 DOES belong to the language described by the grammar.")
+        visualize_tree(parse_tree)
     else:
-        print("The sentence IS NOT accepted")
+        print("The expression 𝑤 DOES NOT belong to the language described by the grammar.")
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"The algorithm took {duration:.4f} seconds to perform the validation.")
