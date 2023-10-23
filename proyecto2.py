@@ -362,7 +362,7 @@ def generate_and_visualize_tree(grammar: dict, table: list, sentence: list) -> N
 
 if __name__ == '__main__':
     regex = "[A-z]+->(([A-Za-z0-9]|\s)*(\|)*)+|ε"
-    data = read_file(f'./grammar1.txt')
+    data = read_file(f'./1.txt')
     for expression in data:
         if expression != '':
             if not evaluate_expression(regex=regex, expression=expression):
