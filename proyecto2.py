@@ -19,7 +19,7 @@ def nullableSymble(gram_argument):
                     if head not in nullable:
                         nullable.add(head)
                         change = True
-        
+
     return nullable
 
 # This function eliminates epsilon productions from the grammar.
@@ -40,8 +40,8 @@ def eliminate_prod_epsilon(gram_argument):
             nullable_body = []
             for i in range(len(body)):
                 if body[i] in nullable:
-                    nullable_body.append({"simbolo":body[i],"position":i})
-                     
+                    nullable_body.append({"symbol":body[i],"position":i})
+
             for i in range(1,len(nullable_body)+1):
                 combinations = it.combinations(nullable_body, r=i)
 
@@ -294,7 +294,7 @@ def cnfA(gram_argument):
                     if simbolo in terminales and simbolo not in [item[1] for item in nuevasProd]:
                         state_counter = generarSimbolo(state_counter)
                         nuevasProd.add((state_counter, simbolo))
-     
+
     for item in nuevasProd:
         nuevaGram.append(item[0] + ' → ' + item[1])
 
@@ -320,7 +320,7 @@ def cnfA(gram_argument):
             
         if len(new_bodies) > 0:
             nuevaGram.append(head + ' → ' + ' | '.join(new_bodies))
-                   
+
     return nuevaGram
 
 # Transforms the grammar to Chomsky Normal Form (CNF) - Part B.
@@ -423,109 +423,3 @@ def convert_to_grammar(rules_list):
             grammar[left] = []
         grammar[left].extend(productions)
     return grammar
-
-# CYK algorithm, returns the parse tree.
-def cyk(grammar, W, simboloInicial):
-
-    n = len(W)
-    P = {}
-    
-    # Initialize P with non-terminals that produce terminals.
-    # Implementation of the base condition of dynamic programming.
-    # Direct derivations are identified.
-    for i in range(n):
-        P[(i, i + 1)] = []
-        for A, productions in grammar.items():
-            for prod in productions:
-                if len(prod) == 1 and prod[0] == W[i]:
-                    P[(i, i + 1)].append(Node(A, [Node(prod[0])]))
-    
-    # Dynamic programming: fill matrix P iteratively.
-    # For each substring of the word, find all possible derivations.
-    for span in range(2, n + 1):
-        for start in range(n - span + 1):
-            end = start + span
-            P[(start, end)] = []
-            # Consider all possible bipartitions of the substring.
-            for split in range(start + 1, end):
-                # Check if each production rule can be applied.
-                for A, productions in grammar.items():
-                    for prod in productions:
-                        if len(prod) == 2:
-                            B, C = prod
-                            # Check the already stored solutions for substrings [start, split] and [split, end].
-                            # If matches are found, build a derivation and add it to our P matrix.
-                            for b_node in P[(start, split)]:
-                                if b_node.symbol == B:
-                                    for c_node in P[(split, end)]:
-                                        if c_node.symbol == C:
-                                            P[(start, end)].append(Node(A, [b_node, c_node]))
-    
-    # Return the parse tree if one exists for the entire word.
-    for node in P[(0, n)]:
-        if node.symbol == simboloInicial:
-            return node
-    return None
-
-# Execution
-pattern = r"([A-Z]+)\s*→\s*(\w|\s)+"
-gram_argument = []
-denegade = False
-simboloInicial = ""
-
-with open("1.txt", 'r') as f:
-    print("\n---------------------")
-    print("ORIGINAL GRAMMAR: ")
-    lineas = f.readlines()
-    for i, linea in enumerate(lineas):
-        linea = linea.strip()
-        linea = linea.replace("â†’", "→")
-        linea = linea.replace("Îµ", "ε")
-            
-        respuesta = prod_valid(pattern, linea)
-            
-        if respuesta:
-            gram_argument.append(linea)
-            if i == 0:
-                simboloInicial = linea.split(' → ')[0]
-            print(linea)
-        else:
-            print("\nERROR! Line: " + linea + " in gram_argument.txt is incorrect.")
-            denegade = True
-            break
-        
-if denegade is False:
-    nuevagram_argument = eliminate_prod_epsilon(gram_argument)
-    print("\nGRAMMAR WITHOUT ε PRODUCTIONS: ")
-    for item in nuevagram_argument:
-        print(item)
-    
-    nuevagram_argument = eliminate_unary(nuevagram_argument)
-    print("\nGRAMMAR WITHOUT UNIT PRODUCTIONS: ")
-    for item in nuevagram_argument:
-        print(item)
-
-    nuevagram_argument = eliminarSimbolosInutiles(nuevagram_argument, simboloInicial)
-    print("\nGRAMMAR WITHOUT UNUSED SYMBOLS: ")
-    for item in nuevagram_argument:
-        print(item)
-    
-    nuevagram_argument = cnf(nuevagram_argument)
-    print("\nGRAMMAR IN CNF: ")
-    for item in nuevagram_argument:
-        print(item)
-        
-    grammar = convert_to_grammar(nuevagram_argument)
-    
-    # Input of the string
-    W = input("\nEnter the string 𝑤. Separate non-terminals with whitespace. Example: (id * id) + id\n")
-    start_time = time.time()
-    parse_tree = cyk(grammar, W.split(), simboloInicial)
-    if parse_tree:
-        print("\nThe expression 𝑤 DOES belong to the language described by the grammar.")
-        visualize_tree(parse_tree)
-    else:
-        print("The expression 𝑤 DOES NOT belong to the language described by the grammar.")
-    end_time = time.time()
-    duration = end_time - start_time
-    print(f"The algorithm took {duration:.4f} seconds to perform the validation.")
