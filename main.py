@@ -9,7 +9,7 @@ denegade = False
 initialSymbol = ""
 
 with open("gramatica.txt", 'r') as file:
-    print("\n--------------------------------------------------------------")
+    print("\n-*************************************************************")
     print("ORIGINAL GRAMMAR: ")
     lineas = file.readlines()
     for i, linea in enumerate(lineas):
@@ -31,25 +31,25 @@ with open("gramatica.txt", 'r') as file:
         
 if denegade is False:
     nuevagram_argument = eliminate_prod_epsilon(gram_argument)
-    print("\n--------------------------------------------------------------")
+    print("\n*************************************************************")
     print("GRAMMAR WITHOUT ε PRODUCTIONS: ")
     for item in nuevagram_argument:
         print(item)
     
     nuevagram_argument = eliminate_unary(nuevagram_argument)
-    print("\n--------------------------------------------------------------")
+    print("\n*************************************************************")
     print("GRAMMAR WITHOUT UNIT PRODUCTIONS: ")
     for item in nuevagram_argument:
         print(item)
 
     nuevagram_argument = eliminarSimbolosInutiles(nuevagram_argument, initialSymbol)
-    print("\n--------------------------------------------------------------")
+    print("\n*************************************************************")
     print("GRAMMAR WITHOUT UNUSED SYMBOLS: ")
     for item in nuevagram_argument:
         print(item)
     
     nuevagram_argument = cnf(nuevagram_argument)
-    print("\n--------------------------------------------------------------")
+    print("\n*************************************************************")
     print("GRAMMAR IN CNF: ")
     for item in nuevagram_argument:
         print(item)
